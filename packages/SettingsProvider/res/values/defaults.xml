@@ -27,6 +27,13 @@
     <bool name="def_auto_time">true</bool>
     <bool name="def_auto_time_zone">true</bool>
     <bool name="def_accelerometer_rotation">true</bool>
+    <!-- Bitmask of allowed display rotation angles:
+           ROTATION_0_MODE: 1
+           ROTATION_90_MODE: 2
+           ROTATION_180_MODE: 4
+           ROTATION_270_MODE: 8
+         Default to 0, 90, 270. -->
+    <integer name="def_accelerometer_rotation_angles">11</integer>
     <!-- Default screen brightness, from 0 to 255.  102 is 40%. -->
     <integer name="def_screen_brightness">102</integer>
     <bool name="def_screen_brightness_automatic_mode">false</bool>
@@ -198,6 +205,9 @@
     <!-- Default for Settings.Secure.LOCK_SCREEN_ALLOW_PRIVATE_NOTIFICATIONS -->
     <bool name="def_lock_screen_allow_private_notifications">true</bool>
 
+    <!-- Default for Settings.Global.SEND_ACTION_APP_ERROR -->
+    <integer name="def_send_action_app_error">0</integer>
+
     <!-- Default for Settings.Global.HEADS_UP_NOTIFICATIONS_ENABLED, 1==on -->
     <integer name="def_heads_up_enabled">1</integer>
 
@@ -222,4 +232,31 @@
     <!-- Default for Settings.Secure.STATS_COLLECTION. -->
     <bool name="def_cm_stats_collection">false</bool>
 
+    <!-- Default for Settings.System.STATUS_BAR_BATTERY_STYLE -->
+    <integer name="def_battery_style">0</integer>
+
+    <!-- Default theme -->
+    <string name="def_theme_package"></string>
+    <string name="def_theme_components"></string>
+
+    <!-- Default value of Settings.System.ENABLE_FORWARD_LOOKUP -->
+    <integer name="def_forward_lookup">1</integer>
+
+    <!-- Default value of Settings.System.ENABLE_PEOPLE_LOOKUP -->
+    <integer name="def_people_lookup">1</integer>
+
+    <!-- Default value of Settings.System.ENABLE_REVERSE_LOOKUP -->
+    <integer name="def_reverse_lookup">1</integer>
+
+    <!-- Default protected sms originating address values of Settings.Secure.PROTECTED_SMS_ADDRESSES -->
+    <string-array name="def_protected_sms_list_values"></string-array>
+
+    <!-- Default for Settings.System.QS_QUICK_PULLDOWN.
+         0. Off
+         1. Right
+         2. Left -->
+    <integer name="def_qs_quick_pulldown">0</integer>
+
+    <!-- Defaults for Settings.Secure.SPELL_CHECKER_ENABLED. -->
+    <bool name="def_spell_checker">true</bool>
 </resources>

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
+ * This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1278,6 +1279,15 @@ public class Intent implements Parcelable, Cloneable {
     public static final String ACTION_SEARCH_LONG_PRESS = "android.intent.action.SEARCH_LONG_PRESS";
 
     /**
+     * Activity Action: Start action associated with long press on the recents key.
+     * <p>Input: {@link #EXTRA_LONG_PRESS_RELEASE} is set to true if the long press
+     * is released
+     * <p>Output: Nothing
+     * @hide
+     */
+    public static final String ACTION_RECENTS_LONG_PRESS = "android.intent.action.RECENTS_LONG_PRESS";
+
+    /**
      * Activity Action: The user pressed the "Report" button in the crash/ANR dialog.
      * This intent is delivered to the package which installed the application, usually
      * Google Play.
@@ -1585,6 +1595,15 @@ public class Intent implements Parcelable, Cloneable {
      * dialogs are the notification window-shade and the recent tasks dialog.
      */
     public static final String ACTION_CLOSE_SYSTEM_DIALOGS = "android.intent.action.CLOSE_SYSTEM_DIALOGS";
+    /**
+     * Broadcast Action: Update preferences for the power menu dialog.  This is to provide a
+     * way for the preferences that need to be enabled/disabled to update because they were
+     * toggled elsewhere in the settings (ie profiles, immersive desktop, etc) so we don't have
+     * to do constant lookups while we wait for the menu to be created. Getting the values once
+     * when necessary is enough.
+     *@hide
+     */
+    public static final String UPDATE_POWER_MENU = "android.intent.action.UPDATE_POWER_MENU";
     /**
      * Broadcast Action: Trigger the download and eventual installation
      * of a package.
@@ -2321,6 +2340,26 @@ public class Intent implements Parcelable, Cloneable {
     public static final String ACTION_NEW_OUTGOING_CALL =
             "android.intent.action.NEW_OUTGOING_CALL";
 
+
+    /**
+     * Broadcast Action: An outgoing sms is about to be sent.
+     *
+     * The Intent will have the following extras:
+     * destAddr - the phone number originally intended to be dialled
+     * scAddr - the service center address
+     * multipart - indicate whether this is a multipart or single message
+     * parts - ArrayList<String> of text parts (one item if multipart=false)
+     * sentIntents - ArrayList<PendingIntent> to send on send
+     * deliveryIntents - ArrayList<PendingIntent> to send on delivery
+     *
+     * Once the broadcast is finished, resultData is used as the actual
+     * number to text.
+     *
+     * @hide
+     */
+    public static final String ACTION_NEW_OUTGOING_SMS =
+            "android.intent.action.NEW_OUTGOING_SMS";
+
     /**
      * Broadcast Action: Have the device reboot.  This is only for use by
      * system code.
@@ -2632,6 +2671,21 @@ public class Intent implements Parcelable, Cloneable {
             "android.intent.action.QUICK_CLOCK";
 
     /**
+     * Broadcast Action: Indicate that unrecoverable error happened during app launch.
+     * Could indicate that curently applied theme is malicious.
+     * @hide
+     */
+    public static final String ACTION_APP_FAILURE =
+            "com.tmobile.intent.action.APP_FAILURE";
+
+    /**
+     * Broadcast Action: Request to reset the unrecoverable errors count to 0.
+     * @hide
+     */
+    public static final String ACTION_APP_FAILURE_RESET =
+            "com.tmobile.intent.action.APP_FAILURE_RESET";
+
+    /**
      * Activity Action: Shows the brightness setting dialog.
      * @hide
      */
@@ -2725,6 +2779,19 @@ public class Intent implements Parcelable, Cloneable {
      */
     @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
     public static final String ACTION_CREATE_DOCUMENT = "android.intent.action.CREATE_DOCUMENT";
+
+    /**
+     * Broadcast Action:  A theme's resources were cached.  Includes two extra fields,
+     * {@link #EXTRA_THEME_PACKAGE_NAME}, containing the package name of the theme that was
+     * processed, and {@link #EXTRA_THEME_RESULT}, containing the result code.
+     *
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.</p>
+     *
+     * @hide
+     */
+    public static final String ACTION_THEME_RESOURCES_CACHED =
+            "android.intent.action.THEME_RESOURCES_CACHED";
 
     /**
      * Activity Action: Allow the user to pick a directory subtree. When
@@ -2943,6 +3010,14 @@ public class Intent implements Parcelable, Cloneable {
      */
     @SdkConstant(SdkConstantType.INTENT_CATEGORY)
     public static final String CATEGORY_CAR_MODE = "android.intent.category.CAR_MODE";
+
+    /**
+     * Used to indicate that a theme package has been installed or un-installed.
+     *
+     * @hide
+     */
+    public static final String CATEGORY_THEME_PACKAGE_INSTALLED_STATE_CHANGE =
+            "com.tmobile.intent.category.THEME_PACKAGE_INSTALL_STATE_CHANGE";
 
     // ---------------------------------------------------------------------
     // ---------------------------------------------------------------------
@@ -3442,6 +3517,15 @@ public class Intent implements Parcelable, Cloneable {
             = "android.intent.extra.SHUTDOWN_USERSPACE_ONLY";
 
     /**
+     * This field is part of the intent {@link #ACTION_RECENTS_LONG_PRESS}.
+     * The type of the extra is a boolean that indicates if the long press
+     * is released.
+     * @hide
+     */
+    public static final String EXTRA_RECENTS_LONG_PRESS_RELEASE =
+            "android.intent.extra.RECENTS_LONG_PRESS_RELEASE";
+
+    /**
      * Optional boolean extra for {@link #ACTION_TIME_CHANGED} that indicates the
      * user has set their time format preferences to the 24 hour format.
      *
@@ -3452,6 +3536,34 @@ public class Intent implements Parcelable, Cloneable {
 
     /** {@hide} */
     public static final String EXTRA_REASON = "android.intent.extra.REASON";
+
+    /**
+     * Extra for {@link #ACTION_THEME_RESOURCES_CACHED} that provides the return value
+     * from processThemeResources. A value of 0 indicates a successful caching of resources.
+     * Error results are:
+     * {@link android.content.pm.PackageManager#INSTALL_FAILED_THEME_AAPT_ERROR}
+     * {@link android.content.pm.PackageManager#INSTALL_FAILED_THEME_IDMAP_ERROR}
+     * {@link android.content.pm.PackageManager#INSTALL_FAILED_THEME_UNKNOWN_ERROR}
+     *
+     * @hide
+     */
+    public static final String EXTRA_THEME_RESULT = "android.intent.extra.RESULT";
+
+    /**
+     * Extra for {@link #ACTION_THEME_RESOURCES_CACHED} that provides the package name of the
+     * theme that was processed.
+     *
+     * @hide
+     */
+    public static final String EXTRA_THEME_PACKAGE_NAME = "android.intent.extra.PACKAGE_NAME";
+
+    /**
+     * Extra for {@link #ACTION_RECENTS_LONG_PRESS} that provides the package name of the
+     * app in foreground when recents was long pressed. Can be reused for other purposes.
+     * @hide
+     */
+    public static final String EXTRA_CURRENT_PACKAGE_NAME =
+            "com.cyanogenmod.intent.extra.CURRENT_PACKAGE_NAME";
 
     // ---------------------------------------------------------------------
     // ---------------------------------------------------------------------

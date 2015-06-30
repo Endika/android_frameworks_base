@@ -43,6 +43,7 @@ import android.database.sqlite.SQLiteDebug;
 import android.database.sqlite.SQLiteDebug.DbStats;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Typeface;
 import android.hardware.display.DisplayManagerGlobal;
 import android.net.IConnectivityManager;
 import android.net.Proxy;
@@ -71,6 +72,7 @@ import android.os.SystemProperties;
 import android.os.Trace;
 import android.os.UserHandle;
 import android.provider.Settings;
+import android.text.TextUtils;
 import android.util.AndroidRuntimeException;
 import android.util.ArrayMap;
 import android.util.DisplayMetrics;
@@ -83,6 +85,7 @@ import android.util.Slog;
 import android.util.SuperNotCalledException;
 import android.view.Display;
 import android.view.HardwareRenderer;
+import android.view.InflateException;
 import android.view.View;
 import android.view.ViewDebug;
 import android.view.ViewManager;
@@ -359,7 +362,7 @@ public final class ActivityThread {
         public ReceiverData(Intent intent, int resultCode, String resultData, Bundle resultExtras,
                 boolean ordered, boolean sticky, IBinder token, int sendingUser) {
             super(resultCode, resultData, resultExtras, TYPE_COMPONENT, ordered, sticky,
-                    token, sendingUser);
+                    token, sendingUser, intent.getFlags());
             this.intent = intent;
         }
 
@@ -1061,12 +1064,27 @@ public final class ActivityThread {
             WindowManagerGlobal.getInstance().dumpGfxInfo(fd);
         }
 
-        @Override
-        public void dumpDbInfo(FileDescriptor fd, String[] args) {
+        private void dumpDatabaseInfo(FileDescriptor fd, String[] args) {
             PrintWriter pw = new FastPrintWriter(new FileOutputStream(fd));
             PrintWriterPrinter printer = new PrintWriterPrinter(pw);
             SQLiteDebug.dump(printer, args);
             pw.flush();
+        }
+
+        @Override
+        public void dumpDbInfo(final FileDescriptor fd, final String[] args) {
+            if (mSystemThread) {
+                // Ensure this invocation is asynchronous to prevent
+                // writer waiting due to buffer cannot be consumed.
+                AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        dumpDatabaseInfo(fd, args);
+                    }
+                });
+            } else {
+                dumpDatabaseInfo(fd, args);
+            }
         }
 
         @Override
@@ -1621,9 +1639,19 @@ public final class ActivityThread {
      */
     Resources getTopLevelResources(String resDir, String[] splitResDirs, String[] overlayDirs,
             String[] libDirs, int displayId, Configuration overrideConfiguration,
-            LoadedApk pkgInfo) {
+            LoadedApk pkgInfo, Context context, String pkgName) {
         return mResourcesManager.getTopLevelResources(resDir, splitResDirs, overlayDirs, libDirs,
-                displayId, overrideConfiguration, pkgInfo.getCompatibilityInfo(), null);
+                displayId, pkgName, overrideConfiguration, pkgInfo.getCompatibilityInfo(), null,
+                context);
+    }
+
+    /**
+     * Creates the top level resources for the given package.
+     */
+    Resources getTopLevelThemedResources(String resDir, int displayId, LoadedApk pkgInfo,
+                                         String pkgName, String themePkgName) {
+        return mResourcesManager.getTopLevelThemedResources(resDir, displayId, pkgName,
+                themePkgName, pkgInfo.getCompatibilityInfo(), null);
     }
 
     final Handler getHandler() {
@@ -1731,8 +1759,7 @@ public final class ActivityThread {
                 ref = mResourcePackages.get(aInfo.packageName);
             }
             LoadedApk packageInfo = ref != null ? ref.get() : null;
-            if (packageInfo == null || (packageInfo.mResources != null
-                    && !packageInfo.mResources.getAssets().isUpToDate())) {
+            if (packageInfo == null) {
                 if (localLOGV) Slog.v(TAG, (includeCode ? "Loading code package "
                         : "Loading resource-only package ") + aInfo.packageName
                         + " (in " + (mBoundApplication != null
@@ -1749,6 +1776,10 @@ public final class ActivityThread {
                     mResourcePackages.put(aInfo.packageName,
                             new WeakReference<LoadedApk>(packageInfo));
                 }
+            }
+            if (packageInfo.mResources != null
+                    && !packageInfo.mResources.getAssets().isUpToDate()) {
+                packageInfo.mResources = null;
             }
             return packageInfo;
         }
@@ -2312,16 +2343,14 @@ public final class ActivityThread {
 
         final DisplayManagerGlobal dm = DisplayManagerGlobal.getInstance();
         try {
-            IActivityContainer container =
-                    ActivityManagerNative.getDefault().getEnclosingActivityContainer(r.token);
-            final int displayId =
-                    container == null ? Display.DEFAULT_DISPLAY : container.getDisplayId();
+            int displayId = ActivityManagerNative.getDefault().getActivityDisplayId(r.token);
             if (displayId > Display.DEFAULT_DISPLAY) {
                 Display display = dm.getRealDisplay(displayId, r.token);
                 baseContext = appContext.createDisplayContext(display);
             }
         } catch (RemoteException e) {
         }
+
 
         // For debugging purposes, if the activity's package name contains the value of
         // the "debug.use-second-display" system property as a substring, then show
@@ -4088,8 +4117,10 @@ public final class ActivityThread {
         if (configDiff != 0) {
             // Ask text layout engine to free its caches if there is a locale change
             boolean hasLocaleConfigChange = ((configDiff & ActivityInfo.CONFIG_LOCALE) != 0);
-            if (hasLocaleConfigChange) {
+            boolean hasFontConfigChange = ((configDiff & ActivityInfo.CONFIG_THEME_FONT) != 0);
+            if (hasLocaleConfigChange || hasFontConfigChange) {
                 Canvas.freeTextLayoutCaches();
+                Typeface.recreateDefaults();
                 if (DEBUG_CONFIGURATION) Slog.v(TAG, "Cleared TextLayout Caches");
             }
         }

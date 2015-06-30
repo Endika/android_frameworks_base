@@ -219,12 +219,17 @@ public class WindowManagerService extends IWindowManager.Stub
     /**
      * Dim surface layer is immediately below target window.
      */
-    static final int LAYER_OFFSET_DIM = 1;
+    static final int LAYER_OFFSET_DIM = 1+1;
 
     /**
      * Blur surface layer is immediately below dim layer.
      */
-    static final int LAYER_OFFSET_BLUR = 2;
+    static final int LAYER_OFFSET_BLUR = 2+1;
+
+    /**
+      * Blur_with_masking layer is immediately below blur layer.
+      */
+    static final int LAYER_OFFSET_BLUR_WITH_MASKING = 1;
 
     /**
      * FocusedStackFrame layer is immediately above focused window.
@@ -2058,6 +2063,36 @@ public class WindowManagerService extends IWindowManager.Stub
         }
     }
 
+    public int getLastWallpaperX() {
+        int curTokenIndex = mWallpaperTokens.size();
+        while (curTokenIndex > 0) {
+            curTokenIndex--;
+            WindowToken token = mWallpaperTokens.get(curTokenIndex);
+            int curWallpaperIndex = token.windows.size();
+            while (curWallpaperIndex > 0) {
+                curWallpaperIndex--;
+                WindowState wallpaperWin = token.windows.get(curWallpaperIndex);
+                return wallpaperWin.mXOffset;
+            }
+        }
+        return -1;
+    }
+
+    public int getLastWallpaperY() {
+        int curTokenIndex = mWallpaperTokens.size();
+        while (curTokenIndex > 0) {
+            curTokenIndex--;
+            WindowToken token = mWallpaperTokens.get(curTokenIndex);
+            int curWallpaperIndex = token.windows.size();
+            while (curWallpaperIndex > 0) {
+                curWallpaperIndex--;
+                WindowState wallpaperWin = token.windows.get(curWallpaperIndex);
+                return wallpaperWin.mYOffset;
+            }
+        }
+        return -1;
+    }
+
     boolean updateWallpaperOffsetLocked(WindowState wallpaperWin, int dw, int dh,
             boolean sync) {
         boolean changed = false;
@@ -2181,6 +2216,16 @@ public class WindowManagerService extends IWindowManager.Stub
                 mLastWallpaperDisplayOffsetY = target.mWallpaperDisplayOffsetY;
             } else if (changingTarget.mWallpaperDisplayOffsetY != Integer.MIN_VALUE) {
                 mLastWallpaperDisplayOffsetY = changingTarget.mWallpaperDisplayOffsetY;
+            }
+            if (target.mWallpaperXStep >= 0) {
+                mLastWallpaperXStep = target.mWallpaperXStep;
+            } else if (changingTarget.mWallpaperXStep >= 0) {
+                mLastWallpaperXStep = changingTarget.mWallpaperXStep;
+            }
+            if (target.mWallpaperYStep >= 0) {
+                mLastWallpaperYStep = target.mWallpaperYStep;
+            } else if (changingTarget.mWallpaperYStep >= 0) {
+                mLastWallpaperYStep = changingTarget.mWallpaperYStep;
             }
         }
 
@@ -5512,6 +5557,11 @@ public class WindowManagerService extends IWindowManager.Stub
         mPointerEventDispatcher.unregisterInputEventListener(listener);
     }
 
+    @Override
+    public void addSystemUIVisibilityFlag(int flags) {
+        mLastStatusBarVisibility |= flags;
+    }
+
     // Called by window manager policy. Not exposed externally.
     @Override
     public int getLidState() {
@@ -5668,7 +5718,7 @@ public class WindowManagerService extends IWindowManager.Stub
         boolean wallpaperEnabled = mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_enableWallpaperService)
                 && !mOnlyCore;
-        boolean haveKeyguard = true;
+        boolean haveKeyguard = false;
         // TODO(multidisplay): Expand to all displays?
         final WindowList windows = getDefaultWindowListLocked();
         final int N = windows.size();
@@ -6010,8 +6060,8 @@ public class WindowManagerService extends IWindowManager.Stub
      * of the target image.
      *
      * @param displayId the Display to take a screenshot of.
-     * @param width the width of the target bitmap
-     * @param height the height of the target bitmap
+     * @param width the width of the target bitmap or -1 for a full screenshot
+     * @param height the height of the target bitmap or -1 for a full screenshot
      * @param force565 if true the returned bitmap will be RGB_565, otherwise it
      *                 will be the same config as the surface
      */
@@ -6165,6 +6215,12 @@ public class WindowManagerService extends IWindowManager.Stub
 
                 // Constrain frame to the screen size.
                 frame.intersect(0, 0, dw, dh);
+
+                // use the whole frame if width and height are not constrained
+                if (width == -1 && height == -1) {
+                    width = frame.width();
+                    height = frame.height();
+                }
 
                 // Tell surface flinger what part of the image to crop. Take the top
                 // right part of the application, and crop the larger dimension to fit.
@@ -7177,6 +7233,7 @@ public class WindowManagerService extends IWindowManager.Stub
             displayInfo.getAppMetrics(mDisplayMetrics);
             mDisplayManagerInternal.setDisplayInfoOverrideFromWindowManager(
                     displayContent.getDisplayId(), displayInfo);
+            displayContent.mBaseDisplayRect.set(0, 0, dw, dh);
         }
         if (false) {
             Slog.i(TAG, "Set app display size: " + appWidth + " x " + appHeight);
@@ -7253,7 +7310,6 @@ public class WindowManagerService extends IWindowManager.Stub
             }
             if (hardKeyboardAvailable != mHardKeyboardAvailable) {
                 mHardKeyboardAvailable = hardKeyboardAvailable;
-                mShowImeWithHardKeyboard = hardKeyboardAvailable;
                 mH.removeMessages(H.REPORT_HARD_KEYBOARD_STATUS_CHANGE);
                 mH.sendEmptyMessage(H.REPORT_HARD_KEYBOARD_STATUS_CHANGE);
             }
@@ -8628,7 +8684,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 anyLayerChanged = true;
             }
             final TaskStack stack = w.getStack();
-            if (layerChanged && stack != null && stack.isDimming(winAnimator)) {
+            if (layerChanged && stack != null && (stack.isDimming(winAnimator) || stack.isBlurring(winAnimator))) {
                 // Force an animation pass just to update the mDimLayer layer.
                 scheduleAnimationLocked();
             }
@@ -9475,6 +9531,31 @@ public class WindowManagerService extends IWindowManager.Stub
         winAnimator.updateFullyTransparent(attrs);
     }
 
+    private void handleFlagBlurBehind(WindowState w) {
+        final WindowManager.LayoutParams attrs = w.mAttrs;
+        if ((attrs.flags & FLAG_BLUR_BEHIND) != 0
+                && w.isDisplayedLw()
+                && !w.mExiting) {
+            final WindowStateAnimator winAnimator = w.mWinAnimator;
+            final TaskStack stack = w.getStack();
+            if (stack == null) {
+                return;
+            }
+            stack.setBlurringTag();
+            if (!stack.isBlurring(winAnimator)) {
+                if (localLOGV) Slog.v(TAG, "Win " + w + " start blurring");
+                stack.startBlurringIfNeeded(winAnimator);
+            }
+        }
+    }
+
+    private void handlePrivateFlagBlurWithMasking(WindowState w) {
+        final WindowManager.LayoutParams attrs = w.mAttrs;
+        boolean hideForced = !w.isDisplayedLw() || w.mExiting;
+        final WindowStateAnimator winAnimator = w.mWinAnimator;
+        winAnimator.updateBlurWithMaskingState(attrs, hideForced);
+    }
+
     private void updateAllDrawnLocked(DisplayContent displayContent) {
         // See if any windows have been drawn, so they (and others
         // associated with them) can now be shown.
@@ -9652,6 +9733,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 mInnerFields.mObscured = false;
                 mInnerFields.mSyswin = false;
                 displayContent.resetDimming();
+                displayContent.resetBlurring();
 
                 // Only used if default window
                 final boolean someoneLosingFocus = !mLosingFocus.isEmpty();
@@ -9677,6 +9759,11 @@ public class WindowManagerService extends IWindowManager.Stub
                     }
 
                     handlePrivateFlagFullyTransparent(w);
+
+                    if (stack != null && !stack.testBlurringTag()) {
+                        handleFlagBlurBehind(w);
+                    }
+                    handlePrivateFlagBlurWithMasking(w);
 
                     if (isDefaultDisplay && obscuredChanged && (mWallpaperTarget == w)
                             && w.isVisibleLw()) {
@@ -9811,6 +9898,7 @@ public class WindowManagerService extends IWindowManager.Stub
                         true /* inTraversal, must call performTraversalInTrans... below */);
 
                 getDisplayContentLocked(displayId).stopDimmingIfNeeded();
+                getDisplayContentLocked(displayId).stopBlurringIfNeeded();
 
                 if (updateAllDrawn) {
                     updateAllDrawnLocked(displayContent);

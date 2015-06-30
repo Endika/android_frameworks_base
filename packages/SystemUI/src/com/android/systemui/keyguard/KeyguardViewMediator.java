@@ -25,6 +25,7 @@ import android.app.Profile;
 import android.app.ProfileManager;
 import android.app.SearchManager;
 import android.app.StatusBarManager;
+import android.app.admin.DevicePolicyManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -243,6 +244,8 @@ public class KeyguardViewMediator extends SystemUI {
 
     private boolean mScreenOn;
 
+    private boolean mDismissSecurelyOnScreenOn = false;
+
     // last known state of the cellular connection
     private String mPhoneState = TelephonyManager.EXTRA_STATE_IDLE;
 
@@ -251,6 +254,11 @@ public class KeyguardViewMediator extends SystemUI {
      * called.
      * */
     private boolean mHiding;
+
+    /**
+     * Whether we are disabling the lock screen internally
+     */
+    private boolean mInternallyDisabled = false;
 
     /**
      * we send this intent when the keyguard is dismissed.
@@ -686,14 +694,17 @@ public class KeyguardViewMediator extends SystemUI {
             if (callback != null) {
                 notifyScreenOnLocked(callback);
             }
+            if (mDismissSecurelyOnScreenOn) {
+                mDismissSecurelyOnScreenOn = false;
+                dismiss();
+            }
         }
         KeyguardUpdateMonitor.getInstance(mContext).dispatchScreenTurnedOn();
         maybeSendUserPresentBroadcast();
     }
 
     private void maybeSendUserPresentBroadcast() {
-        if (mSystemReady && isKeyguardDisabled()
-                && !mUserManager.isUserSwitcherEnabled()) {
+        if (mSystemReady && isKeyguardDisabled()) {
             // Lock screen is disabled because the user has set the preference to "None".
             // In this case, send out ACTION_USER_PRESENT here instead of in
             // handleKeyguardDone()
@@ -706,7 +717,7 @@ public class KeyguardViewMediator extends SystemUI {
             if (DEBUG) Log.d(TAG, "isKeyguardDisabled: keyguard is disabled externally");
             return true;
         }
-        if (mLockPatternUtils.isLockScreenDisabled() && mUserManager.getUsers(true).size() == 1) {
+        if (mLockPatternUtils.isLockScreenDisabled()) {
             if (DEBUG) Log.d(TAG, "isKeyguardDisabled: keyguard is disabled by setting");
             return true;
         }
@@ -716,9 +727,9 @@ public class KeyguardViewMediator extends SystemUI {
                 if (DEBUG) Log.d(TAG, "isKeyguardDisabled: keyguard is disabled by profile");
                 return true;
             }
-         }
+        }
         return false;
-     }
+    }
 
     /**
      * A dream started.  We should lock after the usual screen-off lock timeout but only
@@ -744,6 +755,23 @@ public class KeyguardViewMediator extends SystemUI {
     }
 
     /**
+     * Set the internal keyguard enabled state. This allows SystemUI to disable the lockscreen,
+     * overriding any apps.
+     * @param enabled
+     */
+    public void setKeyguardEnabledInternal(boolean enabled) {
+        mInternallyDisabled = !enabled;
+        setKeyguardEnabled(enabled);
+        if (mInternallyDisabled) {
+            mNeedToReshowWhenReenabled = false;
+        }
+    }
+
+    public boolean getKeyguardEnabledInternal() {
+        return !mInternallyDisabled;
+    }
+
+    /**
      * Same semantics as {@link android.view.WindowManagerPolicy#enableKeyguard}; provide
      * a way for external stuff to override normal keyguard behavior.  For instance
      * the phone app disables the keyguard when it receives incoming calls.
@@ -751,6 +779,17 @@ public class KeyguardViewMediator extends SystemUI {
     public void setKeyguardEnabled(boolean enabled) {
         synchronized (this) {
             if (DEBUG) Log.d(TAG, "setKeyguardEnabled(" + enabled + ")");
+
+            if (mInternallyDisabled && enabled && !lockscreenEnforcedByDevicePolicy()) {
+                // if keyguard is forcefully disabled internally (by lock screen tile), don't allow
+                // it to be enabled externally, unless the device policy manager says so.
+                return;
+            }
+
+            if (isSecure()) {
+                Log.d(TAG, "current mode is SecurityMode, ignore hide keyguard");
+                return;
+            }
 
             mExternallyEnabled = enabled;
 
@@ -950,6 +989,11 @@ public class KeyguardViewMediator extends SystemUI {
 
         if (isKeyguardDisabled() && !lockedOrMissing) {
             if (DEBUG) Log.d(TAG, "doKeyguard: not showing because lockscreen is off");
+            // update state
+            mShowing = false;
+            updateActivityLockScreenState();
+            adjustStatusBarLocked();
+            userActivity();
             return;
         }
 
@@ -972,6 +1016,24 @@ public class KeyguardViewMediator extends SystemUI {
                 || state == IccCardConstants.State.PERM_DISABLED)
                 && requireSim);
         return simLockedOrMissing;
+    }
+
+    public boolean lockscreenEnforcedByDevicePolicy() {
+        DevicePolicyManager dpm = (DevicePolicyManager)
+                mContext.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        if (dpm != null) {
+            int passwordQuality = dpm.getPasswordQuality(null);
+            switch (passwordQuality) {
+                case DevicePolicyManager.PASSWORD_QUALITY_ALPHABETIC:
+                case DevicePolicyManager.PASSWORD_QUALITY_ALPHANUMERIC:
+                case DevicePolicyManager.PASSWORD_QUALITY_COMPLEX:
+                case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC:
+                case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC_COMPLEX:
+                case DevicePolicyManager.PASSWORD_QUALITY_SOMETHING:
+                    return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1081,7 +1143,11 @@ public class KeyguardViewMediator extends SystemUI {
                 }
             } else if (DISMISS_KEYGUARD_SECURELY_ACTION.equals(intent.getAction())) {
                 synchronized (KeyguardViewMediator.this) {
-                    dismiss();
+                    if (mScreenOn) {
+                        dismiss();
+                    } else {
+                        mDismissSecurelyOnScreenOn = true;
+                    }
                 }
             }
         }

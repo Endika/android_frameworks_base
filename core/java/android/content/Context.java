@@ -424,6 +424,9 @@ public abstract class Context {
     @ViewDebug.ExportedProperty(deepExport = true)
     public abstract Resources.Theme getTheme();
 
+    /** @hide */
+    public abstract void recreateTheme();
+
     /**
      * Retrieve styled attribute information in this Context's theme.  See
      * {@link Resources.Theme#obtainStyledAttributes(int[])}
@@ -2706,6 +2709,16 @@ public abstract class Context {
 
     /**
      * Use with {@link #getSystemService} to retrieve a
+     * {@link android.content.res.ThemeManager} for accessing theme service.
+     *
+     * @see #getSystemService
+     * @see android.content.res.ThemeManager
+     * @hide
+     */
+    public static final String THEME_SERVICE = "themes";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a
      * {@link android.nfc.NfcManager} for using NFC.
      *
      * @see #getSystemService
@@ -2913,6 +2926,36 @@ public abstract class Context {
      * @see android.media.projection.ProjectionManager
      */
     public static final String MEDIA_PROJECTION_SERVICE = "media_projection";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a
+     * {@link com.android.server.TorchService} for accessing torch service.
+     *
+     * @see #getSystemService
+     * @see com.android.server.TorchService
+     * @hide
+     */
+    public static final String TORCH_SERVICE = "torch";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a
+     * {@link android.hardware.CmHardwareManager} for controlling
+     * hw specific features
+     *
+     * @see #getSystemService
+     * @see android.hardware.CmHardwareManager
+     * @hide
+     */
+    public static final String CMHW_SERVICE = "cmhw";
+
+    /**
+     * {@link com.android.server.KillSwitchService}for accessing the kill switch service.
+     *
+     * @see #getSystemService
+     * @see com.android.server.KillSwitchService
+     * @hide
+     */
+    public static final String KILLSWITCH_SERVICE = "killswitch";
 
     /**
      * Determine whether the given permission is allowed for a particular
@@ -3366,6 +3409,26 @@ public abstract class Context {
      */
     public abstract Context createApplicationContext(ApplicationInfo application,
             int flags) throws PackageManager.NameNotFoundException;
+
+    /**
+     * Similar to {@link #createPackageContext(String, int)}, but with a
+     * different {@link UserHandle}. For example, {@link #getContentResolver()}
+     * will open any {@link Uri} as the given user.  A theme package can be
+     * specified which will be used when adding resources to this context
+     *
+     * @hide
+     */
+    public abstract Context createPackageContextAsUser(
+            String packageName, String themePackageName, int flags, UserHandle user)
+            throws PackageManager.NameNotFoundException;
+
+    /**
+     * Creates a context given an {@link android.content.pm.ApplicationInfo}.
+     *
+     * @hide
+     */
+    public abstract Context createApplicationContext(ApplicationInfo application,
+            String themePackageName, int flags) throws PackageManager.NameNotFoundException;
 
     /**
      * Get the userId associated with this context

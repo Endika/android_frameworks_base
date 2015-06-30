@@ -103,6 +103,7 @@ import com.android.internal.widget.LockPatternUtils;
 import com.android.server.LocalServices;
 import com.android.server.am.ActivityStack.ActivityState;
 import com.android.server.wm.WindowManagerService;
+import com.android.internal.os.BinderInternal;
 
 
 import java.io.FileDescriptor;
@@ -589,17 +590,21 @@ public final class ActivityStackSupervisor implements DisplayListener {
     }
 
     boolean allResumedActivitiesVisible() {
+        boolean foundResumed = false;
         for (int displayNdx = mActivityDisplays.size() - 1; displayNdx >= 0; --displayNdx) {
             ArrayList<ActivityStack> stacks = mActivityDisplays.valueAt(displayNdx).mStacks;
             for (int stackNdx = stacks.size() - 1; stackNdx >= 0; --stackNdx) {
                 final ActivityStack stack = stacks.get(stackNdx);
                 final ActivityRecord r = stack.mResumedActivity;
-                if (r != null && (!r.nowVisible || r.waitingVisible)) {
-                    return false;
+                if (r != null) {
+                    if (!r.nowVisible || r.waitingVisible) {
+                        return false;
+                    }
+                    foundResumed = true;
                 }
             }
         }
-        return true;
+        return foundResumed;
     }
 
     /**
@@ -770,11 +775,12 @@ public final class ActivityStackSupervisor implements DisplayListener {
             ProfilerInfo profilerInfo, int userId) {
         // Collect information about the target of the Intent.
         ActivityInfo aInfo;
+        ResolveInfo rInfo = null;
         try {
-            ResolveInfo rInfo =
-                AppGlobals.getPackageManager().resolveIntent(
+            rInfo = AppGlobals.getPackageManager().resolveIntent(
                         intent, resolvedType,
                         PackageManager.MATCH_DEFAULT_ONLY
+                                | PackageManager.PERFORM_PRE_LAUNCH_CHECK
                                     | ActivityManagerService.STOCK_PM_FLAGS, userId);
             aInfo = rInfo != null ? rInfo.activityInfo : null;
         } catch (RemoteException e) {
@@ -788,6 +794,16 @@ public final class ActivityStackSupervisor implements DisplayListener {
             // always restart the exact same activity.
             intent.setComponent(new ComponentName(
                     aInfo.applicationInfo.packageName, aInfo.name));
+
+            // Store the actual target componenet in an extra field of the intent.
+            // This will be set in case the receiver of the intent wants to retarget the
+            // intent. Ideally we should have a new extra field, but resusing the
+            // changed_component_name_list for now.
+            if (rInfo != null && rInfo.targetComponentName != null) {
+                // Not creating a list to save an unnecessary object.
+                intent.putExtra(Intent.EXTRA_CHANGED_COMPONENT_NAME_LIST,
+                        rInfo.targetComponentName);
+            }
 
             // Don't debug things in the system process
             if ((startFlags&ActivityManager.START_FLAG_DEBUG) != 0) {
@@ -2641,6 +2657,10 @@ public final class ActivityStackSupervisor implements DisplayListener {
             }
         }
         mPm.cpuBoost(2000 * 1000);
+
+        /* Delay Binder Explicit GC during application launch */
+        BinderInternal.modifyDelayedGcParams();
+
         if (DEBUG_TASKS) Slog.d(TAG, "No task found");
         return null;
     }

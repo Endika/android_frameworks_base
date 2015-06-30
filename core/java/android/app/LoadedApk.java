@@ -531,7 +531,8 @@ public final class LoadedApk {
     public Resources getResources(ActivityThread mainThread) {
         if (mResources == null) {
             mResources = mainThread.getTopLevelResources(mResDir, mSplitResDirs, mOverlayDirs,
-                    mApplicationInfo.sharedLibraryFiles, Display.DEFAULT_DISPLAY, null, this);
+                    mApplicationInfo.sharedLibraryFiles, Display.DEFAULT_DISPLAY, null, this,
+                    mainThread.getSystemContext(), mPackageName);
         }
         return mResources;
     }
@@ -796,7 +797,7 @@ public final class LoadedApk {
                         if (extras != null) {
                             extras.setAllowFds(false);
                         }
-                        mgr.finishReceiver(this, resultCode, data, extras, false);
+                        mgr.finishReceiver(this, resultCode, data, extras, false, intent.getFlags());
                     } catch (RemoteException e) {
                         Slog.w(ActivityThread.TAG, "Couldn't finish broadcast to unregistered receiver");
                     }
@@ -821,8 +822,8 @@ public final class LoadedApk {
             public Args(Intent intent, int resultCode, String resultData, Bundle resultExtras,
                     boolean ordered, boolean sticky, int sendingUser) {
                 super(resultCode, resultData, resultExtras,
-                        mRegistered ? TYPE_REGISTERED : TYPE_UNREGISTERED,
-                        ordered, sticky, mIIntentReceiver.asBinder(), sendingUser);
+                        mRegistered ? TYPE_REGISTERED : TYPE_UNREGISTERED, ordered,
+                        sticky, mIIntentReceiver.asBinder(), sendingUser, intent.getFlags());
                 mCurIntent = intent;
                 mOrdered = ordered;
             }

@@ -56,6 +56,7 @@ import android.telephony.SubscriptionManager;
 import android.telephony.SubInfoRecord;
 import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.SparseBooleanArray;
 
@@ -457,15 +458,19 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
             } else if (TelephonyIntents.ACTION_SERVICE_STATE_CHANGED.equals(action)) {
                 long subId = intent.getLongExtra(PhoneConstants.SUBSCRIPTION_KEY, INVALID_SUBID);
                 mServiceState.put(subId, ServiceState.newFromBundle(intent.getExtras()));
-                Log.d(TAG, "ACTION_SERVICE_STATE_CHANGED on sub: " + subId + " showSpn:" +
-                        mShowSpn.get(subId) + " showPlmn:" + mShowPlmn.get(subId) +
-                        " mServiceState: " + mServiceState.get(subId));
+                Log.d(TAG, "ACTION_SERVICE_STATE_CHANGED on sub: " + subId + " mServiceState: "
+                        + mServiceState.get(subId));
                 mHandler.sendMessage(mHandler.obtainMessage(MSG_CARRIER_INFO_UPDATE, subId));
             } else if (Intent.ACTION_LOCALE_CHANGED.equals(action)) {
                 Log.d(TAG, "Received CONFIGURATION_CHANGED intent");
                 for (int i = 0; i < mNumPhones; i++) {
-                    long subId = SubscriptionManager.getSubId(i)[0];
-                    mHandler.sendMessage(mHandler.obtainMessage(MSG_CARRIER_INFO_UPDATE, subId));
+                    long[] subIds = SubscriptionManager.getSubId(i);
+                    if (subIds != null && subIds.length > 0) {
+                        mHandler.sendMessage(mHandler.obtainMessage(MSG_CARRIER_INFO_UPDATE,
+                                subIds[0]));
+                    } else {
+                        Log.d(TAG, "No valid subs");
+                    }
                 }
             }
 
@@ -671,6 +676,9 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
                 //subId for the slot initially initiazed to invalid value
                 //Got intent with correct subId for the slot now.
                 if (mSubIdForSlot[subInfo.slotId] != subInfo.subId) {
+                    // Update carrier info before
+                    handleCarrierInfoUpdate(subInfo.subId);
+
                     long subId = mSubIdForSlot[subInfo.slotId];
                     mSimState.put(subInfo.subId, mSimState.get(subId));
                     mPlmn.put(subInfo.subId, mPlmn.get(subId));
@@ -696,6 +704,9 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
     }
 
     protected void handleSubInfoContentChange(SubInfoContent content) {
+        // Update carrier info before
+        handleCarrierInfoUpdate(content.subInfoId);
+
         final int count = mCallbacks.size();
         for (int i = 0; i < count; i++) {
             KeyguardUpdateMonitorCallback cb = mCallbacks.get(i).get();
@@ -1070,14 +1081,14 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
         }
     }
 
-    private void concatenate(boolean showSpn, boolean showPlmn, long subId,
+    private void concatenate(Boolean showSpn, Boolean showPlmn, long subId,
             ServiceState state) {
         int phoneId = SubscriptionManager.getPhoneId(subId);
         String rat = getRadioTech(state, phoneId);
-        if (showSpn) {
+        if (Boolean.TRUE.equals(showSpn) && !TextUtils.isEmpty(mSpn.get(subId))) {
             mSpn.put(subId, new StringBuilder().append(mSpn.get(subId)).append(rat));
         }
-        if (showPlmn) {
+        if (Boolean.TRUE.equals(showPlmn) && !TextUtils.isEmpty(mPlmn.get(subId))) {
             mPlmn.put(subId, new StringBuilder().append(mPlmn.get(subId)).append(rat));
         }
     }

@@ -17,7 +17,6 @@
 package android.app;
 
 import android.app.ActivityManager.StackInfo;
-import android.app.ProfilerInfo;
 import android.content.ComponentName;
 import android.content.IIntentReceiver;
 import android.content.IIntentSender;
@@ -467,8 +466,9 @@ public abstract class ActivityManagerNative extends Binder implements IActivityM
             String resultData = data.readString();
             Bundle resultExtras = data.readBundle();
             boolean resultAbort = data.readInt() != 0;
+            int intentFlags = data.readInt();
             if (who != null) {
-                finishReceiver(who, resultCode, resultData, resultExtras, resultAbort);
+                finishReceiver(who, resultCode, resultData, resultExtras, resultAbort, intentFlags);
             }
             reply.writeNoException();
             return true;
@@ -2199,17 +2199,12 @@ public abstract class ActivityManagerNative extends Binder implements IActivityM
             return true;
         }
 
-        case GET_ACTIVITY_CONTAINER_TRANSACTION: {
+        case GET_ACTIVITY_DISPLAY_ID_TRANSACTION: {
             data.enforceInterface(IActivityManager.descriptor);
             IBinder activityToken = data.readStrongBinder();
-            IActivityContainer activityContainer = getEnclosingActivityContainer(activityToken);
+            int displayId = getActivityDisplayId(activityToken);
             reply.writeNoException();
-            if (activityContainer != null) {
-                reply.writeInt(1);
-                reply.writeStrongBinder(activityContainer.asBinder());
-            } else {
-                reply.writeInt(0);
-            }
+            reply.writeInt(displayId);
             return true;
         }
 
@@ -2825,7 +2820,8 @@ class ActivityManagerProxy implements IActivityManager
         data.recycle();
         reply.recycle();
     }
-    public void finishReceiver(IBinder who, int resultCode, String resultData, Bundle map, boolean abortBroadcast) throws RemoteException
+    public void finishReceiver(IBinder who, int resultCode, String resultData, Bundle map,
+            boolean abortBroadcast, int flags) throws RemoteException
     {
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
@@ -2835,6 +2831,7 @@ class ActivityManagerProxy implements IActivityManager
         data.writeString(resultData);
         data.writeBundle(map);
         data.writeInt(abortBroadcast ? 1 : 0);
+        data.writeInt(flags);
         mRemote.transact(FINISH_RECEIVER_TRANSACTION, data, reply, IBinder.FLAG_ONEWAY);
         reply.readException();
         data.recycle();
@@ -5202,26 +5199,21 @@ class ActivityManagerProxy implements IActivityManager
         reply.recycle();
     }
 
-    public IActivityContainer getEnclosingActivityContainer(IBinder activityToken)
-            throws RemoteException {
+    @Override
+    public int getActivityDisplayId(IBinder activityToken) throws RemoteException {
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
         data.writeInterfaceToken(IActivityManager.descriptor);
         data.writeStrongBinder(activityToken);
-        mRemote.transact(GET_ACTIVITY_CONTAINER_TRANSACTION, data, reply, 0);
+        mRemote.transact(GET_ACTIVITY_DISPLAY_ID_TRANSACTION, data, reply, 0);
         reply.readException();
-        final int result = reply.readInt();
-        final IActivityContainer res;
-        if (result == 1) {
-            res = IActivityContainer.Stub.asInterface(reply.readStrongBinder());
-        } else {
-            res = null;
-        }
+        final int displayId = reply.readInt();
         data.recycle();
         reply.recycle();
-        return res;
+        return displayId;
     }
 
+    @Override
     public IBinder getHomeActivityToken() throws RemoteException {
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();

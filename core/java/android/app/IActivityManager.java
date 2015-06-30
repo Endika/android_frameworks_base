@@ -106,7 +106,8 @@ public interface IActivityManager extends IInterface {
             String resultData, Bundle map, String requiredPermission,
             int appOp, boolean serialized, boolean sticky, int userId) throws RemoteException;
     public void unbroadcastIntent(IApplicationThread caller, Intent intent, int userId) throws RemoteException;
-    public void finishReceiver(IBinder who, int resultCode, String resultData, Bundle map, boolean abortBroadcast) throws RemoteException;
+    public void finishReceiver(IBinder who, int resultCode, String resultData, Bundle map,
+            boolean abortBroadcast, int flags) throws RemoteException;
     public void attachApplication(IApplicationThread app) throws RemoteException;
     public void activityResumed(IBinder token) throws RemoteException;
     public void activityIdle(IBinder token, Configuration config,
@@ -436,8 +437,7 @@ public interface IActivityManager extends IInterface {
 
     public void deleteActivityContainer(IActivityContainer container) throws RemoteException;
 
-    public IActivityContainer getEnclosingActivityContainer(IBinder activityToken)
-            throws RemoteException;
+    public int getActivityDisplayId(IBinder activityToken) throws RemoteException;
 
     public IBinder getHomeActivityToken() throws RemoteException;
 
@@ -747,7 +747,7 @@ public interface IActivityManager extends IInterface {
     int GET_PERSISTED_URI_PERMISSIONS_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+181;
     int APP_NOT_RESPONDING_VIA_PROVIDER_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+182;
     int GET_HOME_ACTIVITY_TOKEN_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+183;
-    int GET_ACTIVITY_CONTAINER_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+184;
+    int GET_ACTIVITY_DISPLAY_ID_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+184;
     int DELETE_ACTIVITY_CONTAINER_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+185;
 
 

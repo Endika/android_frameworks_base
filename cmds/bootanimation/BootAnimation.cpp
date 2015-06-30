@@ -62,10 +62,12 @@
 #define OEM_BOOTANIMATION_FILE "/oem/media/bootanimation.zip"
 #define SYSTEM_BOOTANIMATION_FILE "/system/media/bootanimation.zip"
 #define SYSTEM_ENCRYPTED_BOOTANIMATION_FILE "/system/media/bootanimation-encrypted.zip"
+#define THEME_BOOTANIMATION_FILE "/data/system/theme/bootanimation.zip"
 
 #define OEM_SHUTDOWN_ANIMATION_FILE "/oem/media/shutdownanimation.zip"
 #define SYSTEM_SHUTDOWN_ANIMATION_FILE "/system/media/shutdownanimation.zip"
 #define SYSTEM_ENCRYPTED_SHUTDOWN_ANIMATION_FILE "/system/media/shutdownanimation-encrypted.zip"
+#define THEME_SHUTDOWN_ANIMATION_FILE "/data/system/theme/shutdownanimation.zip"
 
 #define OEM_BOOT_MUSIC_FILE "/oem/media/boot.wav"
 #define SYSTEM_BOOT_MUSIC_FILE "/system/media/boot.wav"
@@ -269,7 +271,11 @@ status_t BootAnimation::initTexture(void* buffer, size_t len)
     if (codec) {
         codec->setDitherImage(false);
         codec->decode(&stream, &bitmap,
+                #ifdef USE_565
+                kRGB_565_SkColorType,
+                #else
                 kN32_SkColorType,
+                #endif
                 SkImageDecoder::kDecodePixels_Mode);
         delete codec;
     }
@@ -392,10 +398,44 @@ status_t BootAnimation::readyToRun() {
             ((access(getAnimationFileName(IMG_DATA), R_OK) == 0) &&
             ((zipFile = ZipFileRO::open(getAnimationFileName(IMG_DATA))) != NULL)) ||
 
+            ((access(getAnimationFileName(IMG_THEME), R_OK) == 0) &&
+            ((zipFile = ZipFileRO::open(getAnimationFileName(IMG_THEME))) != NULL)) ||
+
             ((access(getAnimationFileName(IMG_SYS), R_OK) == 0) &&
             ((zipFile = ZipFileRO::open(getAnimationFileName(IMG_SYS))) != NULL))) {
         mZip = zipFile;
     }
+
+#ifdef PRELOAD_BOOTANIMATION
+    // Preload the bootanimation zip on memory, so we don't stutter
+    // when showing the animation
+    FILE* fd;
+    if (encryptedAnimation && access(SYSTEM_ENCRYPTED_BOOTANIMATION_FILE, R_OK) == 0)
+        fd = fopen(SYSTEM_ENCRYPTED_BOOTANIMATION_FILE, "r");
+    else if (access(OEM_BOOTANIMATION_FILE, R_OK) == 0)
+        fd = fopen(OEM_BOOTANIMATION_FILE, "r");
+    else if (access(SYSTEM_BOOTANIMATION_FILE, R_OK) == 0)
+        fd = fopen(SYSTEM_BOOTANIMATION_FILE, "r");
+    else
+        return NO_ERROR;
+
+    if (fd != NULL) {
+        // We could use readahead..
+        // ... if bionic supported it :(
+        //readahead(fd, 0, INT_MAX);
+        void *crappyBuffer = malloc(2*1024*1024);
+        if (crappyBuffer != NULL) {
+            // Read all the zip
+            while (!feof(fd))
+                fread(crappyBuffer, 1024, 2*1024, fd);
+
+            free(crappyBuffer);
+        } else {
+            ALOGW("Unable to allocate memory to preload the animation");
+        }
+        fclose(fd);
+    }
+#endif
 
     return NO_ERROR;
 }
@@ -652,6 +692,7 @@ bool BootAnimation::movie()
 
     mZip->endIteration(cookie);
 
+#ifndef CONTINUOUS_SPLASH
     // clear screen
     glShadeModel(GL_FLAT);
     glDisable(GL_DITHER);
@@ -661,6 +702,7 @@ bool BootAnimation::movie()
     glClear(GL_COLOR_BUFFER_BIT);
 
     eglSwapBuffers(mDisplay, mSurface);
+#endif
 
     glBindTexture(GL_TEXTURE_2D, 0);
     glEnable(GL_TEXTURE_2D);
@@ -688,6 +730,15 @@ bool BootAnimation::movie()
     for (size_t i=0 ; i<pcount ; i++) {
         const Animation::Part& part(animation.parts[i]);
         const size_t fcount = part.frames.size();
+
+        // can be 1, 0, or not set
+        #ifdef NO_TEXTURE_CACHE
+        const int noTextureCache = NO_TEXTURE_CACHE;
+        #else
+        const int noTextureCache =
+                ((animation.width * animation.height * fcount) > 48 * 1024 * 1024) ? 1 : 0;
+        #endif
+
         glBindTexture(GL_TEXTURE_2D, 0);
 
         /*calculate if we need to runtime save memory
@@ -699,7 +750,7 @@ bool BootAnimation::movie()
         GLuint mTextureid;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &mMaxTextureSize);
         //ALOGD("freemem:%ld, %d", getFreeMemory(), mMaxTextureSize);
-        if(getFreeMemory() < mMaxTextureSize * mMaxTextureSize * fcount / 1024) {
+        if(getFreeMemory() < mMaxTextureSize * mMaxTextureSize * fcount / 1024 || noTextureCache) {
             ALOGD("Use save memory method, maybe small fps in actual.");
             needSaveMem = true;
             glGenTextures(1, &mTextureid);
@@ -822,12 +873,14 @@ bool BootAnimation::movie()
 
 char *BootAnimation::getAnimationFileName(ImageID image)
 {
-    char *fileName[2][3] = { { OEM_BOOTANIMATION_FILE,
+    char *fileName[2][4] = { { OEM_BOOTANIMATION_FILE,
             SYSTEM_BOOTANIMATION_FILE,
-            SYSTEM_ENCRYPTED_BOOTANIMATION_FILE }, {
+            SYSTEM_ENCRYPTED_BOOTANIMATION_FILE,
+            THEME_BOOTANIMATION_FILE }, {
             OEM_SHUTDOWN_ANIMATION_FILE,
             SYSTEM_SHUTDOWN_ANIMATION_FILE,
-            SYSTEM_ENCRYPTED_SHUTDOWN_ANIMATION_FILE} };
+            SYSTEM_ENCRYPTED_SHUTDOWN_ANIMATION_FILE,
+            THEME_SHUTDOWN_ANIMATION_FILE } };
     int state;
 
     state = checkBootState() ? 0 : 1;

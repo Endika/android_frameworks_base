@@ -177,10 +177,15 @@ final class ProcessList {
     // 1280x800 or larger screen with around 1GB RAM.  Values are in KB.
     private final int[] mOomMinFreeHigh = new int[] {
             73728, 92160, 110592,
-            129024, 225000, 325000
+            129024, 147456, 184320
     };
     // The actual OOM killer memory levels we are using.
     private final int[] mOomMinFree = new int[mOomAdj.length];
+    // Optimal OOM killer memory levels for Low-Tier devices.
+    private final int[] mOomMinFreeLowRam = new int[] {
+            12288, 20478, 32766,
+            40962, 49152, 57342
+    };
 
     private final long mTotalMemMb;
 
@@ -242,9 +247,14 @@ final class ProcessList {
         }
 
         for (int i=0; i<mOomAdj.length; i++) {
-            int low = mOomMinFreeLow[i];
-            int high = mOomMinFreeHigh[i];
-            mOomMinFree[i] = (int)(low + ((high-low)*scale));
+            if (ActivityManager.isLowRamDeviceStatic()) {
+                // Overwrite calculated LMK parameters with the low-tier tested/validated values
+                mOomMinFree[i] = mOomMinFreeLowRam[i];
+            } else {
+                int low = mOomMinFreeLow[i];
+                int high = mOomMinFreeHigh[i];
+                mOomMinFree[i] = (int)(low + ((high-low)*scale));
+            }
         }
 
         if (minfree_abs >= 0) {
@@ -511,6 +521,14 @@ final class ProcessList {
                 : (first
                         ? sFirstAwakePssTimes
                         : sSameAwakePssTimes);
+
+        // handle an invalid state scenario
+        if ((procState < 0) || (procState >= table.length)) {
+            Slog.w(ActivityManagerService.TAG,
+                    "Invalid Process State within computeNextPssTime");
+            return now + PSS_MIN_TIME_FROM_STATE_CHANGE;
+        }
+
         return now + table[procState];
     }
 

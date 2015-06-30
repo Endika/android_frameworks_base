@@ -18,12 +18,12 @@
 -->
 
 <!-- This is the combined status bar / notification panel window. -->
-<com.android.systemui.statusbar.phone.StatusBarWindowView
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:focusable="true"
-    android:fitsSystemWindows="true"
+    android:fitsSystemWindows="false"
     android:descendantFocusability="afterDescendants">
 
     <com.android.systemui.statusbar.BackDropView
@@ -41,6 +41,15 @@
                    android:layout_height="match_parent"
                    android:scaleType="centerCrop"
                    android:visibility="invisible" />
+        <com.pheelicks.visualizer.VisualizerView
+                   android:id="@+id/visualizerView"
+                   android:gravity="bottom"
+                   android:layout_gravity="bottom"
+                   android:layout_width="match_parent"
+                   android:layout_height="match_parent"
+                   android:clipChildren="false"
+                   android:clipToPadding="false"
+                   android:visibility="visible"/>
     </com.android.systemui.statusbar.BackDropView>
 
     <com.android.systemui.statusbar.ScrimView android:id="@+id/scrim_behind"
@@ -84,4 +93,4 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-</com.android.systemui.statusbar.phone.StatusBarWindowView>
+</FrameLayout>
